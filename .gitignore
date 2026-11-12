@@ -1,0 +1,5 @@
+tlacuache.db*
+clave_host
+__pycache__/
+.venv/
+*.log

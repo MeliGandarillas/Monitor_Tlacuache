@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tlacuache</title>
+<style>
+  :root {
+    --fondo: #14110f; --tarjeta: #1f1a17; --borde: #3a302a;
+    --crema: #f0dcb4; --tenue: #a8957a;
+    --cochinilla: #c8283c; --anil: #4a6fd0; --cempasuchil: #f5a81c; --verde: #4f9a6c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 48px; background: var(--fondo); color: var(--crema);
+    font: 15px/1.45 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  main { max-width: 1100px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: 1px; }
+  h1 span { color: var(--cempasuchil); }
+  .tenue { color: var(--tenue); }
+  h2 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--tenue);
+       text-transform: uppercase; letter-spacing: 1.5px; }
+  section { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 6px;
+            padding: 16px; min-width: 0; }
+  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px; margin: 20px 0 12px; }
+  .cifra b { display: block; font-size: 30px; font-variant-numeric: tabular-nums; }
+  .listas { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 12px; margin: 12px 0; }
+  #horas { display: flex; align-items: flex-end; gap: 2px; height: 90px; }
+  #horas i { flex: 1; min-height: 1px; background: var(--cochinilla); border-radius: 1px 1px 0 0; }
+  .eje { display: flex; justify-content: space-between; font-size: 12px; margin-top: 6px; }
+  .fila { position: relative; display: flex; justify-content: space-between; gap: 12px;
+          padding: 3px 6px; margin-bottom: 3px; }
+  .fila .barra { position: absolute; inset: 0 auto 0 0; background: var(--anil);
+                 opacity: .35; border-radius: 2px; }
+  .fila span { position: relative; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fila span:last-child { flex: none; font-variant-numeric: tabular-nums; }
+  .vacio { color: var(--tenue); }
+  .tabla { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 10px 4px 0; white-space: nowrap; }
+  th { color: var(--tenue); font-weight: 600; border-bottom: 1px solid var(--borde); }
+  td.dato { white-space: normal; word-break: break-all; }
+  .ssh { color: var(--cempasuchil); } .telnet { color: var(--verde); } .http { color: var(--anil); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Tla<span>cuache</span></h1>
+    <span class="tenue">se hace el muerto y anota quién se acerca</span>
+    <span class="tenue" id="estado"></span>
+  </header>
+
+  <div class="cifras">
+    <section class="cifra"><h2>Eventos</h2><b id="t-eventos">0</b></section>
+    <section class="cifra"><h2>IP distintas</h2><b id="t-ips">0</b></section>
+    <section class="cifra"><h2>Intentos de login</h2><b id="t-logins">0</b></section>
+    <section class="cifra"><h2>Comandos</h2><b id="t-comandos">0</b></section>
+  </div>
+
+  <section>
+    <h2>Eventos por hora, últimas 48 horas</h2>
+    <div id="horas"></div>
+    <div class="eje tenue"><span>hace 48 h</span><span id="pico"></span><span>ahora</span></div>
+  </section>
+
+  <div class="listas">
+    <section><h2>Usuarios más probados</h2><div id="l-usuarios"></div></section>
+    <section><h2>Contraseñas más probadas</h2><div id="l-claves"></div></section>
+    <section><h2>Comandos</h2><div id="l-comandos"></div></section>
+    <section><h2>Rutas HTTP</h2><div id="l-rutas"></div></section>
+    <section><h2>IP más activas</h2><div id="l-ips"></div></section>
+    <section><h2>Por servicio</h2><div id="l-servicios"></div></section>
+  </div>
+
+  <section>
+    <h2>Últimos eventos</h2>
+    <div class="tabla"><table>
+      <thead><tr><th>Hora</th><th>Servicio</th><th>IP</th><th>Tipo</th><th>Detalle</th></tr></thead>
+      <tbody id="ultimos"></tbody>
+    </table></div>
+  </section>
+</main>
+
+<script>
+// Todo lo que viene de la bitácora lo escribió un atacante: se pinta
+// siempre con textContent, nunca con innerHTML.
+const id = (x) => document.getElementById(x);
+
+function nodo(etiqueta, texto, clase) {
+  const n = document.createElement(etiqueta);
+  if (texto !== undefined) n.textContent = texto;
+  if (clase) n.className = clase;
+  return n;
+}
+
+function lista(destino, filas) {
+  const caja = id(destino);
+  caja.replaceChildren();
+  if (!filas.length) { caja.append(nodo("div", "Sin datos todavía", "vacio")); return; }
+  const tope = filas[0].veces;
+  for (const f of filas) {
+    const fila = nodo("div", undefined, "fila");
+    const barra = nodo("div", undefined, "barra");
+    barra.style.width = (100 * f.veces / tope) + "%";
+    fila.append(barra, nodo("span", f.valor), nodo("span", f.veces));
+    caja.append(fila);
+  }
+}
+
+function pinta(d) {
+  for (const k of ["eventos", "ips", "logins", "comandos"])
+    id("t-" + k).textContent = d.totales[k].toLocaleString("es-MX");
+
+  const tope = Math.max(1, ...d.por_hora.map((h) => h.veces));
+  id("horas").replaceChildren(...d.por_hora.map((h) => {
+    const b = nodo("i");
+    b.style.height = (100 * h.veces / tope) + "%";
+    b.title = new Date(h.hora * 1000).toLocaleString("es-MX") + ": " + h.veces;
+    return b;
+  }));
+  id("pico").textContent = "pico: " + tope + " por hora";
+
+  for (const k of ["usuarios", "claves", "comandos", "rutas", "ips", "servicios"])
+    lista("l-" + k, d[k]);
+
+  id("ultimos").replaceChildren(...d.ultimos.map((e) => {
+    const tr = nodo("tr");
+    const detalle = e.tipo === "login" ? (e.usuario || "") + " / " + (e.clave || "") : (e.dato || "");
+    tr.append(
+      nodo("td", new Date(e.ts * 1000).toLocaleTimeString("es-MX")),
+      nodo("td", e.servicio, e.servicio),
+      nodo("td", e.ip),
+      nodo("td", e.tipo),
+      nodo("td", detalle, "dato"));
+    return tr;
+  }));
+}
+
+async function carga() {
+  try {
+    const r = await fetch("/api/resumen");
+    if (!r.ok) throw new Error(r.status);
+    pinta(await r.json());
+    id("estado").textContent = "actualizado " + new Date().toLocaleTimeString("es-MX");
+  } catch (error) {
+    id("estado").textContent = "sin bitácora todavía";
+  }
+}
+carga();
+setInterval(carga, 10000);
+</script>
+</body>
+</html>
